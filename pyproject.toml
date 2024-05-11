@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tuned-abs"
+version = "0.0.1"
+authors = [
+  { name="Bohdan Mahometa", email="bogdan.magometa@gmail.com" },
+]
+description = "Paired antibody structure prediction with finetudned AlphaFold-Multimer weights"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache 2 License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/bogdanmagometa/abs"
+Issues = "https://github.com/bogdanmagometa/abs/issues"
