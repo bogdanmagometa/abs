@@ -8,7 +8,7 @@ version = "0.0.1"
 authors = [
   { name="Bohdan Mahometa", email="bogdan.magometa@gmail.com" },
 ]
-description = "Paired antibody structure prediction with finetudned AlphaFold-Multimer weights"
+description = "Paired antibody structure prediction with fine-tuned AlphaFold-Multimer weights"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
