@@ -63,5 +63,7 @@ with open('output.pdb') as f:
 
 ### Visualize
 
-You can visualize the predicted structure using [Mol* website](https://molstar.org/), [PyMol program](https://pymol.org/), [ProDy package](https://pypi.org/project/ProDy/) or other tools.
+You can visualize the predicted structure using [Mol* website](https://molstar.org/), [PyMol program](https://pymol.org/), [ProDy package](https://pypi.org/project/ProDy/) or other tools:
+
+![myfile](img/tuned_abs_vis.gif)
 
