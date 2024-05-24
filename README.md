@@ -40,6 +40,7 @@ optional arguments:
   --pipeline PIPELINE  Which pipeline to use. Can be one of 'Finetuned', 'Finetuned 1x5',
                        'FinetunedValid', 'FinetunedValid 1x5', 'FinetunedValidRefined',
                        'SingleSequence' (default: SingleSequence)
+  --quiet              Inference in quiet mode (default: False)
 $ python3 -m tuned_abs input.fasta output.pdb --pipeline 'Finetuned 1x5'
 ```
 

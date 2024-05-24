@@ -22,11 +22,11 @@ NAME_TO_URL = {
 }
 
 
-def get_weights_path(model_name: str):
+def get_weights_path(model_name: str, quiet: bool = False):
     weights_path = NAME_TO_WEIGHTS[model_name.lower()]
     if not os.path.exists(weights_path):
         url = NAME_TO_URL[model_name]
-        gdown.download(url, weights_path, quiet=False)
+        gdown.download(url, weights_path, quiet=quiet)
 
     return weights_path
 

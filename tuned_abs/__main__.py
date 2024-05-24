@@ -15,6 +15,8 @@ parser.add_argument('--pipeline', help='Which pipeline to use. Can be one of '
                     "'Finetuned', 'Finetuned 1x5', 'FinetunedValid', "
                     "'FinetunedValid 1x5', 'FinetunedValidRefined', "
                     "'SingleSequence'", default='SingleSequence')
+parser.add_argument('--quiet', help='Inference in quiet mode', 
+                    action='store_true')
 args = parser.parse_args()
 
 
@@ -30,7 +32,7 @@ if len(input_sequences) != 2:
                        f'Found {len(input_sequences)}')
 
 # Initialize pipeline
-pipeline = Pipeline.from_name(args.pipeline) # 'SingleSequence', 'Finetuned', 'FinetunedValid'
+pipeline = Pipeline.from_name(args.pipeline, args.quiet)
 
 # Run all steps of the pipeline
 pdb_string = pipeline.run(

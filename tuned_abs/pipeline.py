@@ -115,7 +115,7 @@ class Pipeline:
         return batch, best_out
 
     @classmethod
-    def from_name(clas, name: str) -> Pipeline:
+    def from_name(clas, name: str, quiet: bool = False) -> Pipeline:
         """Create a pipeline object according to the provided name.
         
         Args:
@@ -128,19 +128,20 @@ class Pipeline:
         if pipeline_settings is None:
             raise ValueError(f'Cannot recognize the name: {name}')
 
-        pipeline = clas.from_settings(pipeline_settings)
+        pipeline = clas.from_settings(pipeline_settings, quiet)
         
         return pipeline
 
     @classmethod
-    def from_settings(clas, settings: PipelineSettings):
+    def from_settings(clas, settings: PipelineSettings, quiet: bool = False):
         data_pipeline = DataPipeline(msa=settings.msa, 
-                                     templates=settings.templates)
+                                     templates=settings.templates,
+                                     quiet=quiet)
 
         config = get_config(settings.network)
         model = create_alphafold(config)
         
-        weights_path = get_weights_path(settings.network)
+        weights_path = get_weights_path(settings.network, quiet=quiet)
         weights = torch.load(weights_path, map_location='cpu')
         model.net_iteration.load_state_dict(weights)
 

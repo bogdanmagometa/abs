@@ -21,10 +21,10 @@ TEMPLATES_DB = os.path.join(_ROOT_DIR, 'antibody_hhsearch_db')
 TEMPLATES_DB_PREFIX = 'rep_fas'
 
 class DataPipeline:
-    def __init__(self, msa=True, templates=True):
+    def __init__(self, msa=True, templates=True, quiet=False):
         if msa:
             if not os.path.exists(MSA_AB_FILE):
-                gdown.download(MSA_AB_URL, MSA_AB_FILE, quiet=False)
+                gdown.download(MSA_AB_URL, MSA_AB_FILE, quiet=quiet)
             self.msa_runner = JackhmmerRunner(MSA_AB_FILE)
         else:
             self.msa_runner = _DummyMsaRunner()
@@ -34,7 +34,7 @@ class DataPipeline:
         if templates:
             if not os.path.exists(TEMPLATES_DB):
                 gdown.download_folder(TEMPLATES_DB_URL, output=TEMPLATES_DB, 
-                                      quiet=False)
+                                      quiet=quiet)
             template_db = os.path.join(TEMPLATES_DB, TEMPLATES_DB_PREFIX)
             self.templates_runner = HHSearchRunner(template_db)
         else:
