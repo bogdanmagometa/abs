@@ -1,16 +1,22 @@
-from typing import Dict, List, Any
+import re
+from typing import Dict, List, Any, Optional, Tuple
 from collections import defaultdict
+import requests
 import numpy as np
 from .msa import Msa
-# from .templates import Template
+from .templates import TemplateHit
+from . import mmcif_parsing
 from tuned_abs.common import residue_constants
 
-def create_example_features(chains: Dict[str, str], msas: Dict[str, Msa]):
+def create_example_features(chains: Dict[str, str], msas: Dict[str, Msa],
+                            templates: Dict[str, Optional[TemplateHit]]):
     """Create features corresponding to single example"""
     per_chain_features = {}
     for chain, sequence in chains.items():
         msa = msas[chain]
-        per_chain_features[chain] = create_chain_features(sequence, msa)
+        template = templates[chain]
+        per_chain_features[chain] = create_chain_features(sequence, msa,
+                                                          template)
     features = merge_chain_features(per_chain_features)
     return features
 
@@ -33,14 +39,27 @@ def cast_features_for_model_input(features: dict):
             features[feat_name] = features[feat_name].astype(bool)
     return features
 
-def create_chain_features(sequence: str, msa: Msa):
+def create_chain_features(sequence: str, msa: Msa, 
+                          templates: Optional[List[TemplateHit]] = None):
     """Create features corresponding to a single chain"""
     aatype = make_aatype_feature(sequence)
     residue_index = np.arange(len(sequence))
     msa_ids, deletion_matrix = make_msa_features(msa)
-    #TODO: add template features
+
+    if templates is None:
+        template_features = {}
+    else:
+        template_aatype, template_all_atom_positions, template_all_atom_mask = \
+            make_template_features(sequence, templates)
+        template_features = {
+            'template_aatype': template_aatype,
+            'template_all_atom_positions': template_all_atom_positions,
+            'template_all_atom_mask': template_all_atom_mask
+        }
+
     return {'aatype': aatype, 'residue_index': residue_index,
-            'msa': msa_ids, 'deletion_matrix': deletion_matrix}
+            'msa': msa_ids, 'deletion_matrix': deletion_matrix,
+            **template_features}
 
 def merge_chain_features(per_chain_features: Dict[str, Dict[str, np.ndarray]]):
     """Merge the per-chain features into example-level features"""
@@ -59,7 +78,8 @@ def merge_chain_features(per_chain_features: Dict[str, Dict[str, np.ndarray]]):
 
     # Convenience functions
     def left_to_right_stack(feats):
-        return np.concatenate(feats, axis=0)
+        # concatenate along 1st for 1D, along 2nd for others
+        return np.hstack(feats)
     def block_diagonal_stack(feats, fill_value):
         total_height = sum(feat.shape[0] for feat in feats)
         total_width = sum(feat.shape[1] for feat in feats)
@@ -103,6 +123,12 @@ def merge_chain_features(per_chain_features: Dict[str, Dict[str, np.ndarray]]):
         other_rows = block_diagonal_stack(other_rows, fill_value)
         merged = np.vstack([first_rows[None], other_rows])
         all_chains_features[feat_name] = merged
+
+    for feat_name in ['template_aatype', 'template_all_atom_positions',
+                      'template_all_atom_mask']:
+        all_chains_features[feat_name] = left_to_right_stack(
+            all_chains_features[feat_name]
+        )
 
     return dict(all_chains_features)
 
@@ -163,7 +189,7 @@ def make_msa_features(msa: Msa):
     for aa, id in residue_constants.HHBLITS_AA_TO_ID.items():
         conversion_array[ord(aa)] = residue_constants.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE[id]
     msa_ids = conversion_array[msa_ascii]
-    msa_ids = np.array([[residue_constants.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE[residue_constants.HHBLITS_AA_TO_ID[aa]] for aa in seq] for seq in msa.sequences], dtype=np.int32)
+    # msa_ids = np.array([[residue_constants.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE[residue_constants.HHBLITS_AA_TO_ID[aa]] for aa in seq] for seq in msa.sequences], dtype=np.int32)
     
     # Convert deletion matrix to numpy array of integers
     deletion_matrix = np.array(msa.deletion_matrix, dtype=np.int32)
@@ -175,6 +201,210 @@ def make_msa_features(msa: Msa):
     deletion_matrix_dedup = deletion_matrix[idx_dedup]
 
     return msa_ids_dedup, deletion_matrix_dedup
+
+def make_template_features(query_seq_full: str, templates: List[TemplateHit]):
+    templates = sorted(templates, key=lambda x: x.sum_probs, reverse=True)
+
+    aatype = []
+    atom_positions = []
+    atom_mask = []
+
+    for template_hit in templates:
+        try:
+            cur_aatype, cur_atom_positions, cur_atom_mask = make_template_features_single(
+                query_seq_full, template_hit
+            )
+            aatype.append(cur_aatype)
+            atom_positions.append(cur_atom_positions)
+            atom_mask.append(cur_atom_mask)
+        except Exception:
+            continue
+        if len(aatype) >= 4: #TODO: make number of templates configurable
+            break
+    return np.stack(aatype), np.stack(atom_positions), np.stack(atom_mask)
+
+def make_template_features_single(query_seq_full, template_hit):
+    # Parse PDB ID and chain ID from the template hit
+    pattern = r'([a-zA-Z\d]{4})_(.)'
+    pdb_id, chain_id = re.match(pattern, template_hit.name).groups()
+
+    # Download the cif file
+    cif_url = f'https://files.rcsb.org/download/{pdb_id}.cif'
+    cif_string = requests.get(cif_url).text
+    
+    # Parse cif to get mmCIF object
+    mmcif_object = mmcif_parsing.parse(
+        file_id='', mmcif_string=cif_string
+    ).mmcif_object
+    if mmcif_object is None:
+        raise RuntimeError("Could not parse mmcif file")
+
+    # Get the full hit sequence (TemplateHit has only part of it)
+    hit_seq_full = mmcif_object.chain_to_seqres[chain_id]
+
+    # Build mapping from residues index of target to residues index of full 
+    # hit sequence
+    mapping = _build_target_to_template_mapping(
+        template_hit.query, template_hit.hit_sequence,
+        query_seq_full, hit_seq_full
+    )
+
+    # Get the atom positions and atom mask for the whole chain
+    atom_positions_full, atom_mask_full = _get_atom_positions(
+        mmcif_object, chain_id, max_ca_ca_distance=150.0)
+
+    # Constructur positions and mask features
+    aatype = ['-'] * len(query_seq_full)
+    atom_positions = np.zeros(
+        (len(query_seq_full), residue_constants.atom_type_num, 3),
+        dtype=np.float32
+    )
+    atom_mask = np.zeros(
+        (len(query_seq_full), residue_constants.atom_type_num),
+        dtype=bool
+    )
+    
+    mapping_keys = list(mapping.keys())
+    mapping_values = list(mapping.values())
+    
+    for target_idx, full_hit_idx in mapping.items():
+        aatype[target_idx] = hit_seq_full[full_hit_idx]
+    atom_positions[mapping_keys] = atom_positions_full[mapping_values]
+    atom_mask[mapping_keys] = atom_mask_full[mapping_values]
+
+    def restype_to_id(restype):
+        id = residue_constants.HHBLITS_AA_TO_ID[restype]
+        id = residue_constants.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE[id]
+        return id
+
+    aatype = np.array(list(map(restype_to_id, aatype)), dtype=np.int32)
+
+    return aatype, atom_positions, atom_mask
+
+#TODO: maybe better make use indices from .hhr file
+def _build_target_to_template_mapping(query_seq: str, hit_seq: str, 
+                                      query_seq_full: str, hit_seq_full: str):
+    """Return a dictionary mapping residues indices within a target AA sequence
+    to respective residues indices whithin full chain of template hit.
+    Args:
+        query_seq: str
+            AA sequence with possibly gap characters
+        hit_seq: str
+            AA sequence with possibly gap characters, same length as query_seq
+        query_seq_full: str
+            AA sequence of the target
+        hit_seq_full: str
+            AA sequence from PDB or mmCIF file
+
+    query_seq and hit_seq should be aligned
+    """
+
+    if len(query_seq) != len(hit_seq):
+        raise ValueError("Expected query_seq nad hit_seq to be of the same "
+                         "length.")
+
+    mapping = {}
+
+    i, j = 0, 0
+    for q, h in zip(query_seq, hit_seq):
+        if q != '-' and h != '-':
+            mapping[i] = j
+
+        if q != '-':
+            i += 1
+
+        if h != '-':
+            j += 1
+
+    def find_offset(seq, seq_full):
+        seq_no_gaps = seq.replace('-', '')
+        seq_offset = seq_full.find(seq_no_gaps)
+        return seq_offset
+
+    query_offset = find_offset(query_seq, query_seq_full)
+    hit_offset = find_offset(hit_seq, hit_seq_full)
+
+    if query_offset == -1 or hit_offset == -1:
+        raise ValueError("query_seq (hit_seq) should be a contigues substring"
+                         "of query_seq_full (hit_seq_full)")
+
+    mapping = {k + query_offset : v + hit_offset for k, v in mapping.items()}
+
+    return mapping
+
+def _get_atom_positions(
+    mmcif_object: mmcif_parsing.MmcifObject,
+    auth_chain_id: str,
+    max_ca_ca_distance: float) -> Tuple[np.ndarray, np.ndarray]:
+  """Gets atom positions and mask from a list of Biopython Residues."""
+  num_res = len(mmcif_object.chain_to_seqres[auth_chain_id])
+
+  relevant_chains = [c for c in mmcif_object.structure.get_chains()
+                     if c.id == auth_chain_id]
+  if len(relevant_chains) != 1:
+    raise ValueError(
+        f'Expected exactly one chain in structure with id {auth_chain_id}.')
+  chain = relevant_chains[0]
+
+  all_positions = np.zeros([num_res, residue_constants.atom_type_num, 3])
+  all_positions_mask = np.zeros([num_res, residue_constants.atom_type_num],
+                                dtype=np.int64)
+  for res_index in range(num_res):
+    pos = np.zeros([residue_constants.atom_type_num, 3], dtype=np.float32)
+    mask = np.zeros([residue_constants.atom_type_num], dtype=np.float32)
+    res_at_position = mmcif_object.seqres_to_structure[auth_chain_id][res_index]
+    if not res_at_position.is_missing:
+      res = chain[(res_at_position.hetflag,
+                   res_at_position.position.residue_number,
+                   res_at_position.position.insertion_code)]
+      for atom in res.get_atoms():
+        atom_name = atom.get_name()
+        x, y, z = atom.get_coord()
+        if atom_name in residue_constants.atom_order.keys():
+          pos[residue_constants.atom_order[atom_name]] = [x, y, z]
+          mask[residue_constants.atom_order[atom_name]] = 1.0
+        elif atom_name.upper() == 'SE' and res.get_resname() == 'MSE':
+          # Put the coordinates of the selenium atom in the sulphur column.
+          pos[residue_constants.atom_order['SD']] = [x, y, z]
+          mask[residue_constants.atom_order['SD']] = 1.0
+
+      # Fix naming errors in arginine residues where NH2 is incorrectly
+      # assigned to be closer to CD than NH1.
+      cd = residue_constants.atom_order['CD']
+      nh1 = residue_constants.atom_order['NH1']
+      nh2 = residue_constants.atom_order['NH2']
+      if (res.get_resname() == 'ARG' and
+          all(mask[atom_index] for atom_index in (cd, nh1, nh2)) and
+          (np.linalg.norm(pos[nh1] - pos[cd]) >
+           np.linalg.norm(pos[nh2] - pos[cd]))):
+        pos[nh1], pos[nh2] = pos[nh2].copy(), pos[nh1].copy()
+        mask[nh1], mask[nh2] = mask[nh2].copy(), mask[nh1].copy()
+
+    all_positions[res_index] = pos
+    all_positions_mask[res_index] = mask
+  _check_residue_distances(
+      all_positions, all_positions_mask, max_ca_ca_distance)
+  return all_positions, all_positions_mask
+
+def _check_residue_distances(all_positions: np.ndarray,
+                             all_positions_mask: np.ndarray,
+                             max_ca_ca_distance: float):
+  """Checks if the distance between unmasked neighbor residues is ok."""
+  ca_position = residue_constants.atom_order['CA']
+  prev_is_unmasked = False
+  prev_calpha = None
+  for i, (coords, mask) in enumerate(zip(all_positions, all_positions_mask)):
+    this_is_unmasked = bool(mask[ca_position])
+    if this_is_unmasked:
+      this_calpha = coords[ca_position]
+      if prev_is_unmasked:
+        distance = np.linalg.norm(this_calpha - prev_calpha)
+        if distance > max_ca_ca_distance:
+          raise RuntimeError(
+              'The distance between residues %d and %d is %f > limit %f.' % (
+                  i, i + 1, distance, max_ca_ca_distance))
+      prev_calpha = this_calpha
+    prev_is_unmasked = this_is_unmasked
 
 def generate_random_example(config: dict):
     num_aatypes = config['aatype']

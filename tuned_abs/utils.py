@@ -3,7 +3,7 @@ from typing import Optional
 import numpy as np
 import torch
 
-from alphadock import residue_constants
+from tuned_abs.common import residue_constants
 
 PDB_CHAIN_IDS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 PDB_MAX_CHAINS = len(PDB_CHAIN_IDS)

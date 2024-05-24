@@ -16,7 +16,7 @@ import math
 from typing import Optional, Callable, List, Tuple, Union
 import numpy as np
 
-import deepspeed
+# import deepspeed
 import torch
 import torch.nn as nn
 from scipy.stats import truncnorm

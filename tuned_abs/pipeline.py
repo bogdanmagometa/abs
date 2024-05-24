@@ -1,8 +1,25 @@
+"""
+pipeline.py
+
+Defines the Pipeline class, which is responsible for executing the whole
+pipeline, which can include the following steps:
+- obtaining MSA
+- obtaining templates
+- constructing input features
+- running network infrence
+- conformation sampling
+- running refinement
+
+Additionally, the Pipeline class has static factory methods for creating 
+its instances from a name or a PipelineSettings object.
+"""
+
 from __future__ import annotations
 from typing import Dict, NamedTuple, Optional
 import math
 
 import torch
+from torch import nn
 import numpy as np
 
 from .data.features import (
@@ -28,20 +45,38 @@ class PipelineSettings(NamedTuple):
     # If False, pass no templates
     templates: bool = True
 
-    # Number of confomation space samples
+    # Number of conformation space samples
     num_conf_samples: int = 1
 
     # Whether to refine the final structure with PyRosetta
-    refine: bool = False 
+    refine: bool = False
 
 class Pipeline:
-    def __init__(self, data_pipeline, model, num_conf_samples):
+    def __init__(self, data_pipeline: DataPipeline, model: nn.Module, 
+                 num_conf_samples: int):
         self.data_pipeline = data_pipeline
         self.model = model
         self.num_conf_samples = num_conf_samples
 
     def run(self, chains: Dict[str, str], device: str = 'cuda', 
             n_conf_space_samples: Optional[int] = None):
+        """Run the whole antibody structrue prediction pipeline.
+        
+        Args:
+            chains: a dictionary with the following keys:
+                * 'H': amino-acid sequence of H chain
+                * 'L': amino-acid sequence of L chain
+            device: a string specifying device on which to run the net
+                inference. Default: 'cuda'
+            n_conf_space_samples: optional, integer specifying the number 
+                of conformation samples. The highest confidence. When not 
+                specified, make the default number of samples that was 
+                specified when constructing the object.
+
+        Return:
+            pdb_string: a string containing the contents of pdb file with
+                predicted antibody structure.
+        """
         input_features = self.data_pipeline(chains)
         if n_conf_space_samples is None:
             n_conf_space_samples = self.num_conf_samples
@@ -109,7 +144,7 @@ class Pipeline:
         weights = torch.load(weights_path, map_location='cpu')
         model.net_iteration.load_state_dict(weights)
 
-        pipeline = Pipeline(data_pipeline, model, settings.num_conf_samples)
+        pipeline = clas(data_pipeline, model, settings.num_conf_samples)
 
         return pipeline
 

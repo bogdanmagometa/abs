@@ -2,7 +2,6 @@ import shutil
 import os
 import subprocess
 import tempfile
-from .msa import Msa, parse_stockholm
 
 AF_M_V2_JACKHMMER_OPTIONS = [
     '--noali',
@@ -19,8 +18,8 @@ class JackhmmerRunner:
         self.jackhmmer_bin_path = os.path.abspath(
             shutil.which('jackhmmer')
         )
-    def __call__(self, chain: str) -> Msa:
-        fasta_input = f'>chain\n{chain}'
+    def __call__(self, sequence: str) -> str:
+        fasta_input = f'>chain\n{sequence}'
 
         # create temporary file
         with tempfile.NamedTemporaryFile(delete=False) as fp:
@@ -37,7 +36,5 @@ class JackhmmerRunner:
                 msa = f.read()
 
         # the file is now removed
-
-        msa = parse_stockholm(msa)
 
         return msa
