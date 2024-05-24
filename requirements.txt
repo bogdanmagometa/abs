@@ -1,5 +1,5 @@
 torch
 numpy
-biopython
+biopython==1.79
 scipy
 gdown
