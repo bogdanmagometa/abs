@@ -3,7 +3,15 @@
 ## Requirements
 
 The following tools should be installed:
-- `jackhmmer`
+- HMMER (`jackhmmer` and `esl-reformat` binaries are used)
+- HH-suite (`hhsearch` binary is used)
+
+In conda environment, HMMER and HH-suite can be installed with the 
+following commands:
+```bash
+$ conda install bioconda::hmmer
+$ conda install -c conda-forge -c bioconda hhsuite
+```
 
 ## Installation
 

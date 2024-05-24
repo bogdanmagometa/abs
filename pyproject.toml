@@ -16,7 +16,11 @@ classifiers = [
     "License :: OSI Approved :: Apache 2 License",
     "Operating System :: OS Independent",
 ]
+dynamic = ["dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/bogdanmagometa/abs"
 Issues = "https://github.com/bogdanmagometa/abs/issues"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
