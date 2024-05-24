@@ -1,5 +1,7 @@
 # tuned-abs
 
+You can try `tuned-abs` in [Google Colab](https://colab.research.google.com/drive/1-MzEszyV9bVcX3VKz1FG2ythNfA_XYk1?usp=sharing).
+
 ## Requirements
 
 The following tools should be installed:
